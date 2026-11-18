@@ -17,7 +17,7 @@ import java.awt.event.ActionListener;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.SQLException;
+// import java.sql.SQLException;
 
 public class AddStudentFrame extends JFrame {
     private JTextField nameField;
