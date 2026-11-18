@@ -3,9 +3,11 @@ package ui;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JTextField;
-
+import java.io.File;
+import java.io.FileInputStream;
+import javax.swing.JFileChooser;
 import database.DatabaseConnection;
-
+import java.sql.Types;
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
 // ActionEvent = information about a button click.
@@ -25,12 +27,15 @@ public class AddStudentFrame extends JFrame {
     private JTextField emailField;
     private JTextField phoneField;
     private JButton addButton;
+    private JButton choosePhotoButton;
+    private JLabel photoNameLabel;
+    private File selectedPhotoFile = null; // Stores the actual file object
 
     public AddStudentFrame() {
 
         setTitle("Student Management System - Add Student");
 
-        setSize(400, 430);
+        setSize(400, 490);
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
@@ -85,9 +90,28 @@ public class AddStudentFrame extends JFrame {
         phoneField.setBounds(160, 290, 200, 30);
         add(phoneField);
 
+        choosePhotoButton = new JButton("Choose Photo");
+        choosePhotoButton.setBounds(50, 340, 120, 30);
+        add(choosePhotoButton);
+
+        photoNameLabel = new JLabel("No file selected");
+        photoNameLabel.setBounds(180, 340, 180, 30);
+        add(photoNameLabel);
+
         addButton = new JButton("Add Student");
-        addButton.setBounds(150, 345, 140, 35);
+        addButton.setBounds(150, 400, 140, 35);
         add(addButton);
+        choosePhotoButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                JFileChooser fileChooser = new JFileChooser();
+                int choice = fileChooser.showOpenDialog(AddStudentFrame.this);
+                if (choice == JFileChooser.APPROVE_OPTION) {
+                    selectedPhotoFile = fileChooser.getSelectedFile();
+                    photoNameLabel.setText(selectedPhotoFile.getName());
+                }
+            }
+        });
         addButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -103,7 +127,7 @@ public class AddStudentFrame extends JFrame {
                 try {
                     Connection connection = DatabaseConnection.getConnection();
 
-                    String sql = "INSERT INTO students(name, roll_no, course, semester, email, phone) VALUES (?, ?, ?, ?, ?, ?)";
+                    String sql = "INSERT INTO students(name, roll_no, course, semester, email, phone,photo) VALUES (?, ?, ?, ?, ?, ?,?)";
                     PreparedStatement statement = connection.prepareStatement(sql);
                     statement.setString(1, name);
                     statement.setString(2, rollNo);
@@ -111,6 +135,12 @@ public class AddStudentFrame extends JFrame {
                     statement.setInt(4, semester);
                     statement.setString(5, email);
                     statement.setString(6, phone);
+                    if (selectedPhotoFile != null) {
+                        FileInputStream fis = new FileInputStream(selectedPhotoFile);
+                        statement.setBinaryStream(7, fis, (int) selectedPhotoFile.length());
+                    } else {
+                        statement.setNull(7, Types.BLOB);
+                    }
                     statement.executeUpdate();
                     JOptionPane.showMessageDialog(
                             AddStudentFrame.this,
@@ -122,10 +152,11 @@ public class AddStudentFrame extends JFrame {
                     semesterField.setText("");
                     emailField.setText("");
                     phoneField.setText("");
-
+                    selectedPhotoFile = null;
+                    photoNameLabel.setText("No file selected");
                     statement.close();
                     connection.close();
-                } catch (SQLException ex) {
+                } catch (Exception ex) {
 
                     JOptionPane.showMessageDialog(
                             AddStudentFrame.this,

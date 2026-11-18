@@ -5,10 +5,16 @@ import javax.swing.JLabel;
 import javax.swing.JTextField;
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
-
+import javax.swing.JFileChooser; // <--- NEW: File picker for changing photo
+import javax.swing.ImageIcon; // <--- NEW: Render byte[] or File as image
+import javax.swing.BorderFactory; // <--- NEW: Border for photo box
+import javax.swing.SwingConstants; // <--- NEW: Center placeholder text
+import java.awt.Color; // <--- NEW: Border color
+import java.awt.Image; // <--- NEW: Smooth image scaling
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-
+import java.io.File; // <--- NEW: Holds newly selected photo file
+import java.io.FileInputStream; // <--- NEW: Streams file bytes into MySQL BLOB
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -28,12 +34,16 @@ public class EditStudentFrame extends JFrame {
 
     private JButton loadButton;
     private JButton updateButton;
+    private JLabel photoLabel;
+    // <--- NEW: UI & File fields for viewing/changing the student's photo
+    private JButton changePhotoButton;
+    private File selectedPhotoFile = null;
 
     public EditStudentFrame() {
 
         setTitle("Edit Student");
 
-        setSize(500, 500);
+        setSize(700, 500);
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
@@ -100,10 +110,30 @@ public class EditStudentFrame extends JFrame {
         phoneField = new JTextField();
         phoneField.setBounds(160, 330, 200, 30);
         add(phoneField);
+        // <--- NEW: Photo Preview Box and "Change Photo" Button on the right side
+        photoLabel = new JLabel("No Photo", SwingConstants.CENTER);
+        photoLabel.setBounds(495, 80, 160, 190);
+        photoLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        add(photoLabel);
 
+        changePhotoButton = new JButton("Change Photo");
+        changePhotoButton.setBounds(510, 285, 130, 30);
+        add(changePhotoButton);
         updateButton = new JButton("Update Student");
         updateButton.setBounds(160, 390, 150, 35);
         add(updateButton);
+        // <--- NEW: Listener to pick a new photo and preview it immediately
+        changePhotoButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                JFileChooser fileChooser = new JFileChooser();
+                int choice = fileChooser.showOpenDialog(EditStudentFrame.this);
+                if (choice == JFileChooser.APPROVE_OPTION) {
+                    selectedPhotoFile = fileChooser.getSelectedFile();
+                    displayPhoto(new ImageIcon(selectedPhotoFile.getAbsolutePath()));
+                }
+            }
+        });
 
         loadButton.addActionListener(new ActionListener() {
 
@@ -173,6 +203,15 @@ public class EditStudentFrame extends JFrame {
 
                 phoneField.setText(
                         result.getString("phone"));
+                // <--- NEW: Reset pending file choice and show existing BLOB photo from DB
+                selectedPhotoFile = null;
+                byte[] photoBytes = result.getBytes("photo");
+                if (photoBytes != null && photoBytes.length > 0) {
+                    displayPhoto(new ImageIcon(photoBytes));
+                } else {
+                    photoLabel.setIcon(null);
+                    photoLabel.setText("No Photo");
+                }
 
             } else {
 
@@ -206,17 +245,11 @@ public class EditStudentFrame extends JFrame {
     private void updateStudent() {
 
         String idText = idField.getText();
-
         String name = nameField.getText();
-
         String rollNo = rollNoField.getText();
-
         String course = courseField.getText();
-
         String semesterText = semesterField.getText();
-
         String email = emailField.getText();
-
         String phone = phoneField.getText();
 
         if (idText.trim().isEmpty() ||
@@ -237,47 +270,58 @@ public class EditStudentFrame extends JFrame {
         try {
 
             int studentId = Integer.parseInt(idText);
-
             int semester = Integer.parseInt(semesterText);
 
             Connection connection = DatabaseConnection.getConnection();
+            PreparedStatement statement;
 
-            String sql = "UPDATE students SET " +
-                    "name = ?, " +
-                    "roll_no = ?, " +
-                    "course = ?, " +
-                    "semester = ?, " +
-                    "email = ?, " +
-                    "phone = ? " +
-                    "WHERE student_id = ?";
+            // 1. Check if the user selected a new photo to upload
+            if (selectedPhotoFile != null) {
+                String sql = "UPDATE students SET " +
+                        "name = ?, roll_no = ?, course = ?, semester = ?, email = ?, phone = ?, photo = ? " +
+                        "WHERE student_id = ?";
 
-            PreparedStatement statement = connection.prepareStatement(sql);
+                statement = connection.prepareStatement(sql);
+                statement.setString(1, name);
+                statement.setString(2, rollNo);
+                statement.setString(3, course);
+                statement.setInt(4, semester);
+                statement.setString(5, email);
+                statement.setString(6, phone);
 
-            statement.setString(1, name);
-            statement.setString(2, rollNo);
-            statement.setString(3, course);
-            statement.setInt(4, semester);
-            statement.setString(5, email);
-            statement.setString(6, phone);
-            statement.setInt(7, studentId);
+                FileInputStream fis = new FileInputStream(selectedPhotoFile);
+                statement.setBinaryStream(7, fis, (int) selectedPhotoFile.length());
+                statement.setInt(8, studentId);
+            } else {
+                // 2. If no new photo was chosen, keep their existing photo untouched in MySQL
+                String sql = "UPDATE students SET " +
+                        "name = ?, roll_no = ?, course = ?, semester = ?, email = ?, phone = ? " +
+                        "WHERE student_id = ?";
+
+                statement = connection.prepareStatement(sql);
+                statement.setString(1, name);
+                statement.setString(2, rollNo);
+                statement.setString(3, course);
+                statement.setInt(4, semester);
+                statement.setString(5, email);
+                statement.setString(6, phone);
+                statement.setInt(7, studentId);
+            }
 
             int rowsUpdated = statement.executeUpdate();
 
             if (rowsUpdated > 0) {
-
                 JOptionPane.showMessageDialog(
                         EditStudentFrame.this,
                         "Student updated successfully!");
-
+                selectedPhotoFile = null; // Clear pending file after saving
             } else {
-
                 JOptionPane.showMessageDialog(
                         EditStudentFrame.this,
                         "Student not found.");
             }
 
             statement.close();
-
             connection.close();
 
         } catch (NumberFormatException ex) {
@@ -286,7 +330,7 @@ public class EditStudentFrame extends JFrame {
                     EditStudentFrame.this,
                     "Student ID and Semester must be numbers.");
 
-        } catch (SQLException ex) {
+        } catch (Exception ex) { // Catches both SQLException and FileNotFoundException
 
             JOptionPane.showMessageDialog(
                     EditStudentFrame.this,
@@ -294,5 +338,15 @@ public class EditStudentFrame extends JFrame {
 
             ex.printStackTrace();
         }
+    }
+
+    // Helper method to resize any ImageIcon smoothly to fit the 160x190 photoLabel
+    private void displayPhoto(ImageIcon originalIcon) {
+        Image resizedImage = originalIcon.getImage().getScaledInstance(
+                photoLabel.getWidth(),
+                photoLabel.getHeight(),
+                Image.SCALE_SMOOTH);
+        photoLabel.setText("");
+        photoLabel.setIcon(new ImageIcon(resizedImage));
     }
 }
